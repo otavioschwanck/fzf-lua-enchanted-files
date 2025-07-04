@@ -6,22 +6,10 @@ local config = {
   max_history_per_cwd = 50,
 }
 
-local function get_cwd_key()
-  return vim.fn.getcwd()
-end
-
-local function load_history()
-  local file = io.open(config.history_file, "r")
-  if file then
-    local content = file:read("*a")
-    file:close()
-    if content and content ~= "" then
-      local ok, data = pcall(vim.json.decode, content)
-      if ok and data then
-        history = data
-      end
-    end
-  end
+local function get_cwd_key(override_cwd)
+  local cwd = override_cwd or vim.fn.getcwd()
+  -- Always convert to absolute path for consistency
+  return vim.fn.fnamemodify(cwd, ":p"):gsub("/$", "") -- Remove trailing slash
 end
 
 local function save_history()
@@ -32,8 +20,41 @@ local function save_history()
   end
 end
 
-local function add_to_history(file_path)
-  local cwd = get_cwd_key()
+local function load_history()
+  local file = io.open(config.history_file, "r")
+  if file then
+    local content = file:read("*a")
+    file:close()
+    if content and content ~= "" then
+      local ok, data = pcall(vim.json.decode, content)
+      if ok and data then
+        -- Migrate relative paths to absolute paths for consistency
+        local migrated_history = {}
+        for cwd_key, entries in pairs(data) do
+          -- Convert relative paths to absolute paths
+          local abs_cwd_key = vim.fn.fnamemodify(cwd_key, ":p"):gsub("/$", "")
+          
+          -- If this is a migration (relative to absolute), merge with existing absolute entry
+          if migrated_history[abs_cwd_key] then
+            -- Merge entries, preferring newer timestamps
+            for _, entry in ipairs(entries) do
+              table.insert(migrated_history[abs_cwd_key], entry)
+            end
+          else
+            migrated_history[abs_cwd_key] = entries
+          end
+        end
+        
+        history = migrated_history
+        -- Save the migrated history back to file
+        save_history()
+      end
+    end
+  end
+end
+
+local function add_to_history(file_path, override_cwd)
+  local cwd = get_cwd_key(override_cwd)
   if not history[cwd] then
     history[cwd] = {}
   end
@@ -77,43 +98,51 @@ local function add_to_history(file_path)
   save_history()
 end
 
-local function get_recent_files()
-  local cwd = get_cwd_key()
+local function get_recent_files(override_cwd)
+  local cwd = get_cwd_key(override_cwd)
+  print("get_recent_files: looking for '" .. cwd .. "'")
+  print("available keys in history:")
+  for k, v in pairs(history) do
+    print("  '" .. k .. "' (" .. #v .. " entries)")
+  end
   if not history[cwd] then
+    print("No history found for '" .. cwd .. "'")
     return {}
   end
+  print("Found " .. #history[cwd] .. " entries for '" .. cwd .. "'")
   
   local recent = {}
-  for _, entry in ipairs(history[cwd]) do
+  for i, entry in ipairs(history[cwd]) do
+    print("Processing entry " .. i .. ": '" .. entry.path .. "'")
     -- Clean the stored path of any Unicode characters
     local clean_path = entry.path
-    print("Original path: '" .. clean_path .. "' (length: " .. #clean_path .. ")")
-    
-    -- Debug: show character analysis
-    for i = 1, math.min(10, #clean_path) do
-      local char = clean_path:sub(i, i)
-      local byte = string.byte(char)
-      print("  char " .. i .. ": '" .. char .. "' (byte: " .. byte .. ")")
-    end
-    
-    -- More aggressive cleaning - remove all non-printable ASCII at the start
+    -- Remove all non-printable ASCII at the start
     clean_path = clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
-    print("After non-printable removal: '" .. clean_path .. "'")
     clean_path = clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
-    print("After trim: '" .. clean_path .. "'")
+    print("  cleaned to: '" .. clean_path .. "'")
     
-    -- Check if the cleaned file exists
-    local readable = vim.fn.filereadable(clean_path)
-    print("File readable: " .. readable)
+    -- Check if the cleaned file exists relative to the target cwd
+    local full_path
+    if override_cwd then
+      -- When using custom cwd, make path relative to that directory
+      full_path = cwd .. "/" .. clean_path
+    else
+      -- When using current directory, path is already relative to current dir
+      full_path = clean_path
+    end
+    print("  checking full path: '" .. full_path .. "'")
+    
+    local readable = vim.fn.filereadable(full_path)
+    print("  readable: " .. readable)
     if readable == 1 then
-      print("Adding to recent: '" .. clean_path .. "'")
+      print("  adding to recent: '" .. clean_path .. "'")
       table.insert(recent, clean_path)
     else
-      print("File not readable, skipping")
+      print("  skipping (not readable)")
     end
   end
+  print("Total recent files found: " .. #recent)
   
-  print("Total recent files: " .. #recent)
   return recent
 end
 
@@ -122,7 +151,13 @@ function M.files(opts)
   
   load_history()
   
-  local recent_files = get_recent_files()
+  -- Use the cwd option if provided
+  local target_cwd = opts.cwd
+  if target_cwd then
+    print("target_cwd passed: '" .. target_cwd .. "'")
+    print("resolved to: '" .. get_cwd_key(target_cwd) .. "'")
+  end
+  local recent_files = get_recent_files(target_cwd)
   local fzf_lua = require("fzf-lua")
   
   
@@ -170,7 +205,7 @@ function M.files(opts)
       if selected and #selected > 0 then
         -- Just use the selected files as-is
         if selected[1] then
-          add_to_history(selected[1])
+          add_to_history(selected[1], target_cwd)
         end
         
         if action then
