@@ -27,8 +27,3 @@ end, {
   desc = "Clear all fzf-lua enchanted files history"
 })
 
-vim.api.nvim_create_user_command("FzfLuaFilesTest", function(opts)
-  dofile("/home/otavio/Projetos/fzf-lua-enchanted-files/test_picker_nvim.lua")
-end, {
-  desc = "Run fzf-lua enchanted files test"
-})

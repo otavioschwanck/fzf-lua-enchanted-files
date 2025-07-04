@@ -141,22 +141,32 @@ function M.files(opts)
   local fzf_lua = require("fzf-lua")
   
   
-  -- If we have recent files, create a simple combined list
+  -- If we have recent files, create a combined list without duplicates
   if #recent_files > 0 then
-    
     -- Get the original command
     local original_cmd = opts.cmd or fzf_lua.defaults.files.cmd or "find . -type f -not -path '*/.*'"
     
-    -- Create a simple script that shows recent files first, then all others
+    -- Create a temporary exclude file for the recent files
+    local exclude_file = vim.fn.tempname()
+    local exclude_handle = io.open(exclude_file, "w")
+    if exclude_handle then
+      for _, recent_file in ipairs(recent_files) do
+        exclude_handle:write(recent_file .. "\n")
+      end
+      exclude_handle:close()
+    end
+    
+    -- Create a script that shows recent files first, then all others EXCEPT the recent ones
     local temp_script = vim.fn.tempname() .. ".sh"
     local script_content = string.format([[#!/bin/bash
 # Show recent files first
 %s
-# Show all other files
-%s | sed 's|^\./||'
+# Show all other files, excluding the recent ones
+%s | sed 's|^\./||' | grep -v -F -f %s
 ]], 
     table.concat(vim.tbl_map(function(f) return "echo " .. vim.fn.shellescape(f) end, recent_files), "\n"),
-    original_cmd)
+    original_cmd,
+    vim.fn.shellescape(exclude_file))
     
     local temp_file = io.open(temp_script, "w")
     if temp_file then
@@ -170,6 +180,7 @@ function M.files(opts)
       -- Clean up after a delay
       vim.defer_fn(function()
         vim.fn.delete(temp_script)
+        vim.fn.delete(exclude_file)
       end, 5000)
     end
   end
