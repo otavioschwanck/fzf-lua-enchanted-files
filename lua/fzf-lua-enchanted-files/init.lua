@@ -143,46 +143,58 @@ function M.files(opts)
   
   -- If we have recent files, create a combined list without duplicates
   if #recent_files > 0 then
-    -- Get the original command
-    local original_cmd = opts.cmd or fzf_lua.defaults.files.cmd or "find . -type f -not -path '*/.*'"
+    -- Get the command that fzf-lua would actually use
+    local original_cmd = opts.cmd or fzf_lua.defaults.files.cmd
     
-    -- Create a temporary exclude file for the recent files
-    local exclude_file = vim.fn.tempname()
-    local exclude_handle = io.open(exclude_file, "w")
-    if exclude_handle then
-      for _, recent_file in ipairs(recent_files) do
-        exclude_handle:write(recent_file .. "\n")
+    -- If still no command, detect the best file finder (like fzf-lua does)
+    if not original_cmd then
+      -- Try to detect the same way fzf-lua would
+      if vim.fn.executable("fd") == 1 then
+        original_cmd = "fd --type f --color=never --strip-cwd-prefix"
+      elseif vim.fn.executable("rg") == 1 then
+        original_cmd = "rg --files --color=never"
+      else
+        original_cmd = "find . -type f -not -path '*/\\.git/*' -printf '%P\\n' 2>/dev/null || find . -type f -not -path '*/\\.git/*'"
       end
-      exclude_handle:close()
     end
-    
-    -- Create a script that shows recent files first, then all others EXCEPT the recent ones
-    local temp_script = vim.fn.tempname() .. ".sh"
-    local script_content = string.format([[#!/bin/bash
+      
+      -- Create a temporary exclude file for the recent files
+      local exclude_file = vim.fn.tempname()
+      local exclude_handle = io.open(exclude_file, "w")
+      if exclude_handle then
+        for _, recent_file in ipairs(recent_files) do
+          exclude_handle:write(recent_file .. "\n")
+        end
+        exclude_handle:close()
+      end
+      
+      -- Create a script that shows recent files first, then all others EXCEPT the recent ones
+      local temp_script = vim.fn.tempname() .. ".sh"
+      local script_content = string.format([[#!/bin/bash
 # Show recent files first
 %s
 # Show all other files, excluding the recent ones
 %s | sed 's|^\./||' | grep -v -F -f %s
 ]], 
-    table.concat(vim.tbl_map(function(f) return "echo " .. vim.fn.shellescape(f) end, recent_files), "\n"),
-    original_cmd,
-    vim.fn.shellescape(exclude_file))
-    
-    local temp_file = io.open(temp_script, "w")
-    if temp_file then
-      temp_file:write(script_content)
-      temp_file:close()
-      vim.fn.system("chmod +x " .. temp_script)
+      table.concat(vim.tbl_map(function(f) return "echo " .. vim.fn.shellescape(f) end, recent_files), "\n"),
+      original_cmd,
+      vim.fn.shellescape(exclude_file))
       
-      -- Use the script
-      opts.cmd = temp_script
-      
-      -- Clean up after a delay
-      vim.defer_fn(function()
-        vim.fn.delete(temp_script)
-        vim.fn.delete(exclude_file)
-      end, 5000)
-    end
+      local temp_file = io.open(temp_script, "w")
+      if temp_file then
+        temp_file:write(script_content)
+        temp_file:close()
+        vim.fn.system("chmod +x " .. temp_script)
+        
+        -- Use the script
+        opts.cmd = temp_script
+        
+        -- Clean up after a delay
+        vim.defer_fn(function()
+          vim.fn.delete(temp_script)
+          vim.fn.delete(exclude_file)
+        end, 5000)
+      end
   end
   
   -- Wrap actions to track history
