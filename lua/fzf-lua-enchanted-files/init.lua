@@ -100,26 +100,17 @@ end
 
 local function get_recent_files(override_cwd)
   local cwd = get_cwd_key(override_cwd)
-  print("get_recent_files: looking for '" .. cwd .. "'")
-  print("available keys in history:")
-  for k, v in pairs(history) do
-    print("  '" .. k .. "' (" .. #v .. " entries)")
-  end
   if not history[cwd] then
-    print("No history found for '" .. cwd .. "'")
     return {}
   end
-  print("Found " .. #history[cwd] .. " entries for '" .. cwd .. "'")
   
   local recent = {}
-  for i, entry in ipairs(history[cwd]) do
-    print("Processing entry " .. i .. ": '" .. entry.path .. "'")
+  for _, entry in ipairs(history[cwd]) do
     -- Clean the stored path of any Unicode characters
     local clean_path = entry.path
     -- Remove all non-printable ASCII at the start
     clean_path = clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
     clean_path = clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
-    print("  cleaned to: '" .. clean_path .. "'")
     
     -- Check if the cleaned file exists relative to the target cwd
     local full_path
@@ -130,18 +121,11 @@ local function get_recent_files(override_cwd)
       -- When using current directory, path is already relative to current dir
       full_path = clean_path
     end
-    print("  checking full path: '" .. full_path .. "'")
     
-    local readable = vim.fn.filereadable(full_path)
-    print("  readable: " .. readable)
-    if readable == 1 then
-      print("  adding to recent: '" .. clean_path .. "'")
+    if vim.fn.filereadable(full_path) == 1 then
       table.insert(recent, clean_path)
-    else
-      print("  skipping (not readable)")
     end
   end
-  print("Total recent files found: " .. #recent)
   
   return recent
 end
@@ -153,10 +137,6 @@ function M.files(opts)
   
   -- Use the cwd option if provided
   local target_cwd = opts.cwd
-  if target_cwd then
-    print("target_cwd passed: '" .. target_cwd .. "'")
-    print("resolved to: '" .. get_cwd_key(target_cwd) .. "'")
-  end
   local recent_files = get_recent_files(target_cwd)
   local fzf_lua = require("fzf-lua")
   
