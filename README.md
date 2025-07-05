@@ -1,6 +1,6 @@
 # fzf-lua-enchanted-files
 
-A high-performance Neovim plugin that enhances `fzf-lua.files()` with intelligent file history tracking and smart prioritization. Recently selected files appear at the top of your file picker with zero duplicates, making navigation lightning-fast even in massive codebases.
+A high-performance Neovim plugin that enhances `fzf-lua.files()` with intelligent file history tracking and smart prioritization. Recently selected files appear at the top of your file picker, making navigation lightning-fast even in massive codebases.
 
 ## ✨ Features
 
@@ -19,6 +19,10 @@ This plugin is designed for **maximum performance**:
 - **Scales perfectly** with project size (tested on 50k+ file projects)
 - **Instant response** even on massive codebases
 
+## Demo
+
+![Demo](https://i.imgur.com/Ysj4jdN.gif)
+
 ## 📦 Installation
 
 ### Using [lazy.nvim](https://github.com/folke/lazy.nvim)
@@ -27,9 +31,7 @@ This plugin is designed for **maximum performance**:
 {
   "otavioschwanck/fzf-lua-enchanted-files",
   dependencies = { "ibhagwan/fzf-lua" },
-  config = function()
-    require("fzf-lua-enchanted-files").setup()
-  end
+  opts = {}
 }
 ```
 
