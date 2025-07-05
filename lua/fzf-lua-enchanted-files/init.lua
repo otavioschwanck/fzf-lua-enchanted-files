@@ -170,7 +170,7 @@ function M.files(opts)
       
       -- Create a script that shows recent files first, then all others EXCEPT the recent ones
       local temp_script = vim.fn.tempname() .. ".sh"
-      local script_content = string.format([[#!/bin/bash
+      local script_content = string.format([[#!/usr/bin/env bash
 # Show recent files first
 %s
 # Show all other files, excluding the recent ones
