@@ -26,4 +26,3 @@ vim.api.nvim_create_user_command("FzfLuaFilesClear", function(opts)
 end, {
   desc = "Clear all fzf-lua enchanted files history"
 })
-
