@@ -104,6 +104,13 @@ local function get_recent_files(override_cwd)
     return {}
   end
   
+  -- Get current buffer's filename relative to cwd
+  local current_buffer = vim.fn.expand("%:.")
+  local current_file = nil
+  if current_buffer and current_buffer ~= "" then
+    current_file = current_buffer
+  end
+  
   local recent = {}
   for _, entry in ipairs(history[cwd]) do
     -- Clean the stored path of any Unicode characters
@@ -111,6 +118,11 @@ local function get_recent_files(override_cwd)
     -- Remove all non-printable ASCII at the start
     clean_path = clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
     clean_path = clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
+    
+    -- Skip if this is the current buffer file
+    if current_file and clean_path == current_file then
+      goto continue
+    end
     
     -- Check if the cleaned file exists relative to the target cwd
     local full_path
@@ -125,6 +137,8 @@ local function get_recent_files(override_cwd)
     if vim.fn.filereadable(full_path) == 1 then
       table.insert(recent, clean_path)
     end
+    
+    ::continue::
   end
   
   return recent
