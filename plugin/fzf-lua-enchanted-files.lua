@@ -3,6 +3,12 @@ if vim.g.loaded_fzf_lua_enchanted_files then
 end
 vim.g.loaded_fzf_lua_enchanted_files = 1
 
+local function lazy_require(module)
+  return function(...)
+    return require(module)(...)
+  end
+end
+
 vim.api.nvim_create_user_command("FzfLuaFiles", function(opts)
   require("fzf-lua-enchanted-files").files()
 end, {
@@ -25,4 +31,10 @@ vim.api.nvim_create_user_command("FzfLuaFilesClear", function(opts)
   require("fzf-lua-enchanted-files").clear_history()
 end, {
   desc = "Clear all fzf-lua enchanted files history"
+})
+
+vim.api.nvim_create_user_command("FzfLuaFilesHealth", function(opts)
+  vim.cmd("checkhealth fzf-lua-enchanted-files")
+end, {
+  desc = "Check fzf-lua enchanted files health"
 })

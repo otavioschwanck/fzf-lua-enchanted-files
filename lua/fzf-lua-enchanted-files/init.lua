@@ -1,10 +1,15 @@
 local M = {}
 
 local history = {}
-local config = {
-  history_file = vim.fn.stdpath("data") .. "/fzf-lua-enchanted-files-history.json",
-  max_history_per_cwd = 50,
-}
+
+local function get_config()
+  local defaults = {
+    history_file = vim.fn.stdpath("data") .. "/fzf-lua-enchanted-files-history.json",
+    max_history_per_cwd = 50,
+  }
+  
+  return vim.tbl_deep_extend("force", defaults, vim.g.fzf_lua_enchanted_files or {})
+end
 
 local function get_cwd_key(override_cwd)
   local cwd = override_cwd or vim.fn.getcwd()
@@ -13,6 +18,7 @@ local function get_cwd_key(override_cwd)
 end
 
 local function save_history()
+  local config = get_config()
   local file = io.open(config.history_file, "w")
   if file then
     file:write(vim.json.encode(history))
@@ -21,6 +27,7 @@ local function save_history()
 end
 
 local function load_history()
+  local config = get_config()
   local file = io.open(config.history_file, "r")
   if file then
     local content = file:read("*a")
@@ -91,6 +98,7 @@ local function add_to_history(file_path, override_cwd)
     timestamp = os.time()
   })
 
+  local config = get_config()
   if #history[cwd] > config.max_history_per_cwd then
     table.remove(history[cwd])
   end
@@ -156,12 +164,18 @@ end
 function M.files(opts)
   opts = opts or {}
 
+  -- Check dependency
+  local has_fzf_lua, fzf_lua = pcall(require, "fzf-lua")
+  if not has_fzf_lua then
+    vim.notify("fzf-lua is required but not installed", vim.log.levels.ERROR)
+    return
+  end
+
   load_history()
 
   -- Use the cwd option if provided
   local target_cwd = opts.cwd
   local recent_files = get_recent_files(target_cwd)
-  local fzf_lua = require("fzf-lua")
 
   -- If we have recent files, create a combined list without duplicates
   if #recent_files > 0 then
@@ -309,6 +323,7 @@ function M.debug_history()
 
   print("=== FZF-LUA ENCHANTED FILES DEBUG ===")
   print("Current CWD: " .. cwd)
+  local config = get_config()
   print("History file: " .. config.history_file)
   print("History file exists: " .. (vim.fn.filereadable(config.history_file) == 1 and "yes" or "no"))
 
@@ -367,12 +382,23 @@ function M.debug_history()
 end
 
 function M.setup(user_config)
-  config = vim.tbl_extend("force", config, user_config or {})
+  if user_config then
+    vim.g.fzf_lua_enchanted_files = vim.tbl_deep_extend(
+      "force", 
+      vim.g.fzf_lua_enchanted_files or {}, 
+      user_config
+    )
+  end
 
+  local config = get_config()
   local data_dir = vim.fn.fnamemodify(config.history_file, ":h")
   if vim.fn.isdirectory(data_dir) == 0 then
     vim.fn.mkdir(data_dir, "p")
   end
+end
+
+function M.get_config()
+  return get_config()
 end
 
 return M

@@ -31,7 +31,12 @@ This plugin is designed for **maximum performance**:
 {
   "otavioschwanck/fzf-lua-enchanted-files",
   dependencies = { "ibhagwan/fzf-lua" },
-  opts = {}
+  config = function()
+    -- Modern configuration using vim.g
+    vim.g.fzf_lua_enchanted_files = {
+      max_history_per_cwd = 50,
+    }
+  end
 }
 ```
 
@@ -89,12 +94,27 @@ require("fzf-lua-enchanted-files").files({
 
 ## ⚙️ Configuration
 
+### Modern Configuration (Recommended)
+
+Use `vim.g` for configuration following modern Neovim patterns:
+
 ```lua
-require("fzf-lua-enchanted-files").setup({
+vim.g.fzf_lua_enchanted_files = {
   -- Maximum number of files to remember per working directory
   max_history_per_cwd = 50,
   
   -- Custom history file location (optional)
+  history_file = vim.fn.stdpath("data") .. "/my-custom-history.json",
+}
+```
+
+### Legacy Configuration
+
+The traditional `setup()` function is still supported for backward compatibility:
+
+```lua
+require("fzf-lua-enchanted-files").setup({
+  max_history_per_cwd = 50,
   history_file = vim.fn.stdpath("data") .. "/my-custom-history.json",
 })
 ```
@@ -177,6 +197,7 @@ require("fzf-lua-enchanted-files").clear_history()
 | `:FzfLuaFilesDebug` | Debug history state and file paths |
 | `:FzfLuaFilesClean` | Clean duplicate entries from history |
 | `:FzfLuaFilesClear` | Clear all history data |
+| `:FzfLuaFilesHealth` | Check plugin health and configuration |
 
 ## 📋 Requirements
 
@@ -222,6 +243,11 @@ The plugin automatically migrates old history formats:
 
 ## 🐛 Troubleshooting
 
+### Check Plugin Health
+```vim
+:FzfLuaFilesHealth
+```
+
 ### Debug History State
 ```vim
 :FzfLuaFilesDebug
@@ -234,6 +260,13 @@ The plugin automatically migrates old history formats:
 
 ### Check File Paths
 The debug command shows detailed information about stored paths and their readability.
+
+### Health Check Features
+- Validates fzf-lua dependency
+- Checks history file permissions
+- Verifies shell command availability
+- Validates configuration values
+- Shows current configuration state
 
 ## 📄 License
 
