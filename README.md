@@ -9,6 +9,7 @@ A high-performance Neovim plugin that enhances `fzf-lua.files()` with intelligen
 - **📁 Per-Directory History**: Each directory maintains independent file history
 - **🔧 Custom Directory Support**: Works with any directory via `cwd` option
 - **💾 Persistent Storage**: History survives between Neovim sessions
+- **🔄 Auto-History**: Optionally track file opens automatically
 - **⚙️ Zero Configuration**: Works out of the box with sensible defaults
 
 ## 🚀 Performance
@@ -105,6 +106,9 @@ vim.g.fzf_lua_enchanted_files = {
   
   -- Custom history file location (optional)
   history_file = vim.fn.stdpath("data") .. "/my-custom-history.json",
+  
+  -- Automatically add opened files to history (default: false)
+  auto_history = true,
 }
 ```
 
@@ -116,16 +120,26 @@ The traditional `setup()` function is still supported for backward compatibility
 require("fzf-lua-enchanted-files").setup({
   max_history_per_cwd = 50,
   history_file = vim.fn.stdpath("data") .. "/my-custom-history.json",
+  auto_history = true,
 })
 ```
 
 ## 🧠 How It Works
 
 1. **Selection Tracking**: Every file selection is tracked per directory
-2. **Smart Prioritization**: Recent files appear at the top of the list
-3. **Duplicate Prevention**: Shell-level filtering ensures no duplicates
-4. **CWD-Based Storage**: Each directory maintains independent history
-5. **Performance Optimization**: Heavy lifting done by optimized shell commands
+2. **Auto-History**: Optionally track files automatically when opened (if `auto_history = true`)
+3. **Smart Prioritization**: Recent files appear at the top of the list
+4. **Duplicate Prevention**: Shell-level filtering ensures no duplicates
+5. **CWD-Based Storage**: Each directory maintains independent history
+6. **Performance Optimization**: Heavy lifting done by optimized shell commands
+
+### Auto-History Feature
+
+When `auto_history = true` is configured:
+- Files are automatically added to history when opened with `BufReadPost` event
+- Only files within the current working directory are tracked
+- Uses the same deduplication and size limits as manual selections
+- Seamlessly integrates with existing history management
 
 ## 📋 Example Output
 

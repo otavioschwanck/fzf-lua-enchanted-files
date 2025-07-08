@@ -6,6 +6,7 @@ local function get_config()
   local defaults = {
     history_file = vim.fn.stdpath("data") .. "/fzf-lua-enchanted-files-history.json",
     max_history_per_cwd = 50,
+    auto_history = false,
   }
   
   return vim.tbl_deep_extend("force", defaults, vim.g.fzf_lua_enchanted_files or {})
@@ -73,9 +74,9 @@ local function add_to_history(file_path, override_cwd)
 
   -- Clean the input path of any Unicode characters (icons) and prefixes
   local clean_path = file_path
-  -- Remove Unicode characters at the beginning (file icons)
-  clean_path = clean_path:gsub("^[\238-\239][\128-\191]*", "") -- Remove UTF-8 sequences
-  clean_path = clean_path:gsub("^%s*(.-)%s*$", "%1")           -- trim whitespace
+  -- Remove Unicode characters at the beginning (file icons) - broader range
+  clean_path = clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
+  clean_path = clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
 
   -- Convert to relative path for consistent storage
   local rel_path = vim.fn.fnamemodify(clean_path, ":.")
@@ -84,7 +85,15 @@ local function add_to_history(file_path, override_cwd)
   -- Remove existing entries for the same file
   local new_history = {}
   for _, entry in ipairs(history[cwd]) do
-    if entry.path ~= rel_path then
+    -- Clean the existing entry path for comparison
+    local existing_clean_path = entry.path
+    -- Remove Unicode characters at the beginning (file icons) - broader range
+    existing_clean_path = existing_clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
+    existing_clean_path = existing_clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
+    -- Convert to relative path for consistent comparison
+    existing_clean_path = vim.fn.fnamemodify(existing_clean_path, ":.")
+    
+    if existing_clean_path ~= rel_path then
       table.insert(new_history, entry)
     end
   end
@@ -394,6 +403,26 @@ function M.setup(user_config)
   local data_dir = vim.fn.fnamemodify(config.history_file, ":h")
   if vim.fn.isdirectory(data_dir) == 0 then
     vim.fn.mkdir(data_dir, "p")
+  end
+
+  -- Setup auto-history if enabled
+  if config.auto_history then
+    vim.api.nvim_create_autocmd("BufReadPost", {
+      callback = function()
+        local file_path = vim.fn.expand("%:p")
+        local current_cwd = vim.fn.getcwd()
+        
+        -- Check if file exists and is within current working directory
+        if vim.fn.filereadable(file_path) == 1 then
+          local file_dir = vim.fn.fnamemodify(file_path, ":h")
+          if file_dir:find("^" .. vim.pesc(current_cwd)) then
+            local relative_path = vim.fn.fnamemodify(file_path, ":.")
+            add_to_history(relative_path)
+          end
+        end
+      end,
+      desc = "Auto-add files to fzf-lua-enchanted-files history"
+    })
   end
 end
 
