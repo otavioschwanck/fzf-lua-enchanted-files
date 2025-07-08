@@ -141,6 +141,34 @@ When `auto_history = true` is configured:
 - Uses the same deduplication and size limits as manual selections
 - Seamlessly integrates with existing history management
 
+### Manual History Management
+
+You can manually add files to the history for any directory:
+
+```lua
+-- Add a file to history for the current working directory
+require("fzf-lua-enchanted-files").add_to_history("src/components/Header.tsx")
+
+-- Add a file to history for a specific directory
+require("fzf-lua-enchanted-files").add_to_history("users_controller.rb", "app/controllers")
+
+-- Add multiple files programmatically
+local files = {"src/utils/helpers.js", "src/components/Footer.tsx", "src/main.js"}
+for _, file in ipairs(files) do
+  require("fzf-lua-enchanted-files").add_to_history(file)
+end
+```
+
+**Parameters:**
+- `file_path` (string): Path to the file to add to history
+- `override_cwd` (string, optional): Target directory for the history entry (defaults to current working directory)
+
+This is useful for:
+- Preloading frequently used files into history
+- Importing file lists from other tools
+- Custom integrations with project management workflows
+- Building automated development environment setups
+
 ## 📋 Example Output
 
 When you run the file picker in a project directory:
@@ -189,6 +217,23 @@ Configure the plugin with custom options.
 
 **Parameters:**
 - `config` (table, optional): Configuration options
+
+### `add_to_history(file_path, override_cwd)`
+
+Manually add a file to the history for a specific directory.
+
+**Parameters:**
+- `file_path` (string): Path to the file to add to history
+- `override_cwd` (string, optional): Target directory for the history entry (defaults to current working directory)
+
+**Examples:**
+```lua
+-- Add a file to current directory history
+require("fzf-lua-enchanted-files").add_to_history("src/main.js")
+
+-- Add a file to specific directory history
+require("fzf-lua-enchanted-files").add_to_history("user.rb", "app/models")
+```
 
 ### Utility Functions
 
