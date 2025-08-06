@@ -4,12 +4,31 @@ local history = {}
 
 local function get_config()
   local defaults = {
-    history_file = vim.fn.stdpath("data") .. "/fzf-lua-enchanted-files-history.json",
+    history_dir = vim.fn.stdpath("data") .. "/fzf-lua-enchanted-files",
     max_history_per_cwd = 50,
     auto_history = false,
   }
-  
+
   return vim.tbl_deep_extend("force", defaults, vim.g.fzf_lua_enchanted_files or {})
+end
+
+local function normalize_path_to_filename(path)
+  -- Convert absolute path to a safe filename
+  -- Replace path separators and special characters with underscores
+  local normalized = path
+      :gsub("^/", "root_")   -- Handle root prefix
+      :gsub("/", "_")        -- Replace slashes with underscores
+      :gsub("[^%w_%-]", "_") -- Replace any non-alphanumeric, non-underscore, non-hyphen with underscore
+      :gsub("_+", "_")       -- Collapse multiple underscores into one
+      :gsub("_$", "")        -- Remove trailing underscore
+
+  return normalized .. ".json"
+end
+
+local function get_history_file_path(cwd_key)
+  local config = get_config()
+  local filename = normalize_path_to_filename(cwd_key)
+  return config.history_dir .. "/" .. filename
 end
 
 local function get_cwd_key(override_cwd)
@@ -18,51 +37,66 @@ local function get_cwd_key(override_cwd)
   return vim.fn.fnamemodify(cwd, ":p"):gsub("/$", "") -- Remove trailing slash
 end
 
-local function save_history()
+local function save_history_for_cwd(cwd_key)
   local config = get_config()
-  local file = io.open(config.history_file, "w")
+
+  -- Ensure history directory exists
+  if vim.fn.isdirectory(config.history_dir) == 0 then
+    vim.fn.mkdir(config.history_dir, "p")
+  end
+
+  local file_path = get_history_file_path(cwd_key)
+  local file = io.open(file_path, "w")
   if file then
-    file:write(vim.json.encode(history))
+    -- Save only the entries for this specific cwd
+    local cwd_entries = history[cwd_key] or {}
+    file:write(vim.json.encode(cwd_entries))
     file:close()
   end
 end
 
-local function load_history()
-  local config = get_config()
-  local file = io.open(config.history_file, "r")
-  if file then
-    local content = file:read("*a")
-    file:close()
-    if content and content ~= "" then
-      local ok, data = pcall(vim.json.decode, content)
-      if ok and data then
-        -- Migrate relative paths to absolute paths for consistency
-        local migrated_history = {}
-        for cwd_key, entries in pairs(data) do
-          -- Convert relative paths to absolute paths
-          local abs_cwd_key = vim.fn.fnamemodify(cwd_key, ":p"):gsub("/$", "")
+local function save_history()
+  -- Save all cwds to their respective files
+  for cwd_key, _ in pairs(history) do
+    save_history_for_cwd(cwd_key)
+  end
+end
 
-          -- If this is a migration (relative to absolute), merge with existing absolute entry
-          if migrated_history[abs_cwd_key] then
-            -- Merge entries, preferring newer timestamps
-            for _, entry in ipairs(entries) do
-              table.insert(migrated_history[abs_cwd_key], entry)
-            end
-          else
-            migrated_history[abs_cwd_key] = entries
-          end
+local function load_history_for_cwd(cwd_key)
+  local file_path = get_history_file_path(cwd_key)
+  if vim.fn.filereadable(file_path) == 1 then
+    local file = io.open(file_path, "r")
+    if file then
+      local content = file:read("*a")
+      file:close()
+      if content and content ~= "" then
+        local ok, entries = pcall(vim.json.decode, content)
+        if ok and entries then
+          history[cwd_key] = entries
+          return true
         end
-
-        history = migrated_history
-        -- Save the migrated history back to file
-        save_history()
       end
+    end
+  end
+  return false
+end
+
+
+local function load_history(cwd_key)
+  -- If specific cwd requested, load only that one
+  if cwd_key then
+    if not history[cwd_key] then
+      load_history_for_cwd(cwd_key)
     end
   end
 end
 
 local function add_to_history(file_path, override_cwd)
   local cwd = get_cwd_key(override_cwd)
+
+  -- Load history for this cwd if not already loaded
+  load_history(cwd)
+
   if not history[cwd] then
     history[cwd] = {}
   end
@@ -75,7 +109,7 @@ local function add_to_history(file_path, override_cwd)
   -- Clean the input path of any Unicode characters (icons) and prefixes
   local clean_path = file_path
   -- Remove Unicode characters at the beginning (file icons) - broader range
-  clean_path = clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
+  clean_path = clean_path:gsub("^[^\32-\126]*", "")  -- Remove any non-printable ASCII at start
   clean_path = clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
 
   -- Convert to relative path for consistent storage
@@ -88,11 +122,11 @@ local function add_to_history(file_path, override_cwd)
     -- Clean the existing entry path for comparison
     local existing_clean_path = entry.path
     -- Remove Unicode characters at the beginning (file icons) - broader range
-    existing_clean_path = existing_clean_path:gsub("^[^\32-\126]*", "") -- Remove any non-printable ASCII at start
+    existing_clean_path = existing_clean_path:gsub("^[^\32-\126]*", "")  -- Remove any non-printable ASCII at start
     existing_clean_path = existing_clean_path:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
     -- Convert to relative path for consistent comparison
     existing_clean_path = vim.fn.fnamemodify(existing_clean_path, ":.")
-    
+
     if existing_clean_path ~= rel_path then
       table.insert(new_history, entry)
     end
@@ -112,11 +146,15 @@ local function add_to_history(file_path, override_cwd)
     table.remove(history[cwd])
   end
 
-  save_history()
+  save_history_for_cwd(cwd)
 end
 
 local function get_recent_files(override_cwd)
   local cwd = get_cwd_key(override_cwd)
+
+  -- Load history for this cwd if not already loaded
+  load_history(cwd)
+
   if not history[cwd] then
     return {}
   end
@@ -180,7 +218,6 @@ function M.files(opts)
     return
   end
 
-  load_history()
 
   -- Use the cwd option if provided
   local target_cwd = opts.cwd
@@ -280,64 +317,92 @@ function M.files(opts)
 end
 
 function M.clean_history()
-  load_history()
+
+  -- Load all existing history files
+  local config = get_config()
+  if vim.fn.isdirectory(config.history_dir) == 1 then
+    local files = vim.fn.glob(config.history_dir .. "/*.json", 0, 1)
+    for _, file_path in ipairs(files) do
+      local filename = vim.fn.fnamemodify(file_path, ":t:r") -- Get filename without .json
+      -- Reconstruct the original cwd path from the filename
+      local cwd_key = filename:gsub("^root_", "/"):gsub("_", "/")
+      load_history_for_cwd(cwd_key)
+    end
+  end
 
   print("=== CLEANING HISTORY ===")
   local total_removed = 0
 
   for cwd, entries in pairs(history) do
-    print("Processing CWD: " .. cwd)
-    local cleaned_entries = {}
-    local seen_files = {}
+    if cwd ~= "_migrated" then
+      print("Processing CWD: " .. cwd)
+      local cleaned_entries = {}
+      local seen_files = {}
 
-    -- Process entries in reverse order (newest first) to keep the most recent timestamp
-    for i = #entries, 1, -1 do
-      local entry = entries[i]
+      -- Process entries in reverse order (newest first) to keep the most recent timestamp
+      for i = #entries, 1, -1 do
+        local entry = entries[i]
 
-      -- Clean the path
-      local clean_path = entry.path
-      local abs_path = vim.fn.fnamemodify(clean_path, ":p")
+        -- Clean the path
+        local clean_path = entry.path
+        local abs_path = vim.fn.fnamemodify(clean_path, ":p")
 
-      -- Only keep if we haven't seen this file yet (keeping newest)
-      if not seen_files[abs_path] then
-        seen_files[abs_path] = true
-        table.insert(cleaned_entries, 1, {
-          path = abs_path,
-          timestamp = entry.timestamp
-        })
-        print("  Kept: " .. abs_path)
-      else
-        total_removed = total_removed + 1
-        print("  Removed duplicate: " .. entry.path)
+        -- Only keep if we haven't seen this file yet (keeping newest)
+        if not seen_files[abs_path] then
+          seen_files[abs_path] = true
+          table.insert(cleaned_entries, 1, {
+            path = abs_path,
+            timestamp = entry.timestamp
+          })
+          print("  Kept: " .. abs_path)
+        else
+          total_removed = total_removed + 1
+          print("  Removed duplicate: " .. entry.path)
+        end
       end
-    end
 
-    history[cwd] = cleaned_entries
+      history[cwd] = cleaned_entries
+      save_history_for_cwd(cwd)
+    end
   end
 
-  save_history()
   print("=== CLEANING COMPLETE ===")
   print("Total duplicates removed: " .. total_removed)
 end
 
 function M.clear_history()
+  local config = get_config()
+
+  -- Remove all history files
+  if vim.fn.isdirectory(config.history_dir) == 1 then
+    local files = vim.fn.glob(config.history_dir .. "/*.json", 0, 1)
+    for _, file_path in ipairs(files) do
+      vim.fn.delete(file_path)
+    end
+  end
+
   history = {}
-  save_history()
   print("History cleared!")
 end
 
 function M.debug_history()
-  load_history()
   local cwd = get_cwd_key()
+
+  -- Load history for current CWD
+  load_history(cwd)
 
   print("=== FZF-LUA ENCHANTED FILES DEBUG ===")
   print("Current CWD: " .. cwd)
   local config = get_config()
-  print("History file: " .. config.history_file)
-  print("History file exists: " .. (vim.fn.filereadable(config.history_file) == 1 and "yes" or "no"))
+  print("History directory: " .. config.history_dir)
+  print("History directory exists: " .. (vim.fn.isdirectory(config.history_dir) == 1 and "yes" or "no"))
 
-  if vim.fn.filereadable(config.history_file) == 1 then
-    local file = io.open(config.history_file, "r")
+  local current_file = get_history_file_path(cwd)
+  print("Current CWD history file: " .. current_file)
+  print("Current CWD history file exists: " .. (vim.fn.filereadable(current_file) == 1 and "yes" or "no"))
+
+  if vim.fn.filereadable(current_file) == 1 then
+    local file = io.open(current_file, "r")
     if file then
       local content = file:read("*a")
       file:close()
@@ -388,21 +453,30 @@ function M.debug_history()
       print("    Manual readable: " .. vim.fn.filereadable(manual_clean))
     end
   end
+
+  -- Show all history files
+  print("\nAll history files:")
+  if vim.fn.isdirectory(config.history_dir) == 1 then
+    local files = vim.fn.glob(config.history_dir .. "/*.json", 0, 1)
+    for _, file_path in ipairs(files) do
+      print("  " .. file_path)
+    end
+  end
 end
 
 function M.setup(user_config)
   if user_config then
     vim.g.fzf_lua_enchanted_files = vim.tbl_deep_extend(
-      "force", 
-      vim.g.fzf_lua_enchanted_files or {}, 
+      "force",
+      vim.g.fzf_lua_enchanted_files or {},
       user_config
     )
   end
 
   local config = get_config()
-  local data_dir = vim.fn.fnamemodify(config.history_file, ":h")
-  if vim.fn.isdirectory(data_dir) == 0 then
-    vim.fn.mkdir(data_dir, "p")
+  -- Create history directory instead of single file directory
+  if vim.fn.isdirectory(config.history_dir) == 0 then
+    vim.fn.mkdir(config.history_dir, "p")
   end
 
   -- Setup auto-history if enabled
@@ -411,7 +485,7 @@ function M.setup(user_config)
       callback = function()
         local file_path = vim.fn.expand("%:p")
         local current_cwd = vim.fn.getcwd()
-        
+
         -- Check if file exists and is within current working directory
         if vim.fn.filereadable(file_path) == 1 then
           local file_dir = vim.fn.fnamemodify(file_path, ":h")
