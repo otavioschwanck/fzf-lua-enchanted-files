@@ -256,8 +256,8 @@ function M.files(opts)
     local script_content = string.format([[#!/usr/bin/env bash
 # Show recent files first
 %s
-# Show all other files, excluding the recent ones
-%s | sed 's|^\./||' | grep -v -F -f %s
+# Show all other files, excluding the recent ones (using -x for exact line match)
+%s | sed 's|^\./||' | grep -v -x -F -f %s
 ]],
       table.concat(vim.tbl_map(function(f) return "echo " .. vim.fn.shellescape(f) end, recent_files), "\n"),
       original_cmd,
